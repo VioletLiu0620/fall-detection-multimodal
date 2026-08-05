@@ -1,0 +1,15 @@
+data/
+*.zip
+*.mp4
+*.mp3
+*.mov
+*.png
+*.jpg
+*.jpeg
+checkpoints/   
+__pycache__/
+.ipynb_checkpoints/
+*.pyc
+.DS_Store
+.env
+venv/
