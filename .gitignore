@@ -6,6 +6,7 @@ data/
 *.png
 *.jpg
 *.jpeg
+*.rar
 checkpoints/   
 __pycache__/
 .ipynb_checkpoints/
