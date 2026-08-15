@@ -10,7 +10,7 @@ from matplotlib import pyplot as plt
 from mlxtend.plotting import plot_confusion_matrix
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, classification_report
 
-train_dataloader, test_dataloader = get_dataloaders(BATCH_SIZE=32, NUM_WORKERS=0) # could be os_count() but use 0 here for mac's child process issue
+train_dataloader, test_dataloader, paths_test = get_dataloaders(BATCH_SIZE=16, NUM_WORKERS=0) # could be os_count() but use 0 here for mac's child process issue
 
 class Fall2d(nn.Module):
     def __init__(self,
@@ -34,7 +34,8 @@ class Fall2d(nn.Module):
             nn.MaxPool2d(kernel_size=2,
                          stride= 2), # MaxPool stride's default is the same as the kernel size
             # (60, 13) -> (30, 6)
-            
+
+            nn.Dropout(0.5),
             nn.Flatten(),
             nn.LazyLinear(out_features= output_shape)
         )
@@ -119,6 +120,8 @@ def train(model: nn.Module,
               "train acc": [],
               "test loss": [],
               "test acc": []}
+
+    best_test_loss = float("inf")
     
     for epoch in tqdm(range(epochs)):
         train_loss, train_acc = train_step(model= model,
@@ -139,12 +142,17 @@ def train(model: nn.Module,
         result["test loss"].append(test_loss)
         result["test acc"].append(test_acc)
 
+        if test_loss < best_test_loss:
+            best_test_loss = test_loss
+            torch.save(model.state_dict(), "best_model.pth")
+            print(f"New best test loss at epoch: {epoch}, test_loss: {test_loss}")
+
     return result
 
 
 model = Fall2d(input_shape=3,
                output_shape=2,
-               hidden_units=32)
+               hidden_units=16)
 
 loss_fn = nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(params= model.parameters(),
@@ -157,7 +165,7 @@ result = train(model= model,
                test_dataloader= test_dataloader,
                loss_fn= loss_fn,
                optimizer= optimizer,
-               epochs= 5,
+               epochs= 30,
                device= device)
 
 end_time = timer()
@@ -166,9 +174,13 @@ print(f"Total training time {end_time - start_time:.3f} seconds")
 
 # Plot the confusion matrix
 
+model.load_state_dict(torch.load("best_model.pth"))
 model.eval()
 y_preds = []
 y_trues = []
+wrong_files = []
+idx = 0
+
 with torch.inference_mode():
     for X, y in test_dataloader:
         X, y = X.to(device), y.to(device)
@@ -176,6 +188,15 @@ with torch.inference_mode():
         y_pred = torch.softmax(y_logit, dim=1).argmax(dim=1)
         y_preds.append(y_pred.cpu())
         y_trues.append(y.cpu())
+
+        for i in range(len(y)):
+            if y_pred[i] != y[i]:
+                wrong_files.append({
+                    "files": paths_test[idx],
+                    "pred": y_pred[i].item(),
+                    "true": y[i].item()
+                })
+            idx += 1
 
 y_preds = torch.cat(y_preds)     # combine 34 batch-tensors into one (1086,) tensor
 y_trues = torch.cat(y_trues)     # same for the true labels
@@ -194,6 +215,19 @@ report = classification_report(y_true= y_trues,
                                target_names=["Fall", "No Fall"])
 
 print(report)
+
+print(f"Number of False Detection: {len(wrong_files)}")
+false_positive = [w for w in wrong_files if w["pred"] == 0 and w["true"] == 1] # false alarm, fall = 0, no fall = 1
+false_negative = [w for w in wrong_files if w["pred"] == 1 and w["true"] == 0] # missed alarm, more serious
+
+print(f"Number of false positive (false alarm): {len(false_positive)}")
+for w in false_positive:
+    print(f"{w["files"]}")
+
+print(f"Number of false negative (missed alarm): {len(false_negative)}")
+for w in false_negative:
+    print(f"{w["files"]}")
+
 
 ## Test for model actually working
 
