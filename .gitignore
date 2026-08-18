@@ -7,6 +7,7 @@ data/
 *.jpg
 *.jpeg
 *.rar
+*.wav
 .vscode/
 checkpoints/   
 __pycache__/
