@@ -4,7 +4,7 @@ import pandas as pd
 
 model = YOLO("yolov8n-pose.pt")
 
-def mov_to_csv(video_name: str, video_type: str = ".mov"):
+def mov_to_csv(video_path: str):
     """
     Parameters:
     video_name: name of the video file without .mov or .mp4
@@ -12,10 +12,9 @@ def mov_to_csv(video_name: str, video_type: str = ".mov"):
 
     Returns a csv file that has the same name as video_name.csv with columns "Frame", "Keypoint", "X", "Y", "Confidence"
     """
-    full_video_path = f"{video_name}{video_type}"
-    print(f"Processing video file {full_video_path} to csv")
+    print(f"Processing video file {video_path} to csv")
 
-    results = model(full_video_path, stream= True, verbose= False) # stream= True reduce memory consumption, verbose= False to stop printing long detection message
+    results = model(video_path, stream= True, verbose= False) # stream= True reduce memory consumption, verbose= False to stop printing long detection message
 
     result_list = []
     joint_names = [
@@ -44,6 +43,7 @@ def mov_to_csv(video_name: str, video_type: str = ".mov"):
 
         result_list.append(df)
 
+    video_name = video_path.split(".")[0]
     output_csv_name = f"{video_name}.csv"
 
     if result_list:
@@ -54,3 +54,4 @@ def mov_to_csv(video_name: str, video_type: str = ".mov"):
 
     return final_csv
 
+mov_to_csv("c_f_c_a.MOV")
