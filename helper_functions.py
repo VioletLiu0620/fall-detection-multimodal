@@ -48,6 +48,7 @@ def mov_to_csv(video_path: str|Path):
 
         result_list.append(df)
 
+    video_path = str(video_path)
     video_name = video_path.split(".")[0]
     output_csv_name = f"{video_name}.csv"
 
@@ -96,4 +97,36 @@ def csv_to_pred_label(csv_file: str | Path,
 
     return y_label
 
+class Fall2d(nn.Module):
+    def __init__(self,
+                 input_shape: int,
+                 output_shape: int,
+                 hidden_units: int):
+        super().__init__()
+        self.conv_layers = nn.Sequential(
+            nn.Conv2d(in_channels= input_shape, 
+                      out_channels= hidden_units,
+                      kernel_size= 3,
+                      stride= 1,
+                      padding= 0), # (64, 17) -> (62, 15)
+            nn.ReLU(),
+            nn.Conv2d(in_channels= hidden_units,
+                      out_channels= hidden_units,
+                      kernel_size= 3,
+                      stride= 1,
+                      padding= 0), # (62, 15) -> (60, 13)
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2,
+                         stride= 2), # MaxPool stride's default is the same as the kernel size
+            # (60, 13) -> (30, 6)
+
+            nn.Dropout(0.5),
+            nn.Flatten(),
+            nn.LazyLinear(out_features= output_shape)
+        )
+    def forward(self, x):
+        # Originally we have torch.Size([32, 64, 17, 3]): (batches, frames, joints, coords), but coords is what we want to see the difference across frames and joints
+        # Therefore, we need to permute it because of PyTorch convention that (batches, channels, height, width) -> (32, 3, 64, 17)
+
+        return self.conv_layers(x.permute(0, 3, 1, 2))
 
