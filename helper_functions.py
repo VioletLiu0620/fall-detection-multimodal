@@ -87,6 +87,7 @@ def csv_to_pred_label(csv_file: str | Path,
     model.eval()
     with torch.inference_mode():
         y_logits = model(X)
+        print(f"Logits: {y_logits}")
         y_pred = torch.softmax(y_logits, dim=1).argmax(dim=1)
         y_label = label_map[y_pred.item()]
 

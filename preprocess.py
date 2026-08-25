@@ -82,6 +82,20 @@ def resample(reshaped_array, N=64):
 
     return resampled
 
+def custom_transform(video_array):
+    ar = video_array.copy()
+    xy = ar[:, :, :2]
+    # print(xy.shape)
+    conf = ar[:, :, 2:]
+
+    LEFT_HIP, RIGHT_HIP = 11, 12
+    mid_hip = (xy[:, LEFT_HIP, :] + xy[:, RIGHT_HIP, :]) / 2 # midhip.shape = (64, 2)
+    xy =  xy - mid_hip[:, None, :] # change midhip into (64, 1, 2) to be able minus xy
+    xy = xy / 200.0                        # ← scale to roughly ±1 range
+    result = np.concatenate((xy, conf), axis=2) # conf is joining at last dimenstion, xy: (64, 17, 2) + conf: (64, 17, 1) - > result: (64, 17, 3)
+
+    return result
+
 
 def process_one_video(video_csv, N=64):
     """
@@ -91,7 +105,9 @@ def process_one_video(video_csv, N=64):
     """
     clean = dedup(video_csv)
     reshaped = reshape(clean)
-    return resample(reshaped, N=N)
+    resampled = resample(reshaped, N=N)
+    transformed = custom_transform(resampled)
+    return transformed
 
 if __name__ == "__main__":
     data_path = Path("data")
