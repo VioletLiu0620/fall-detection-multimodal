@@ -25,6 +25,7 @@ def predict(datafolder: str | Path,
     model = Fall2d(input_shape=3,
                    output_shape= 2,
                    hidden_units=16)
+    model.load_state_dict(torch.load(model_path))
     model.to(device)
 
     datafolder_path = Path(datafolder)
@@ -37,6 +38,7 @@ def predict(datafolder: str | Path,
             y_trues.append(video.parent.name)
     
     print(f"Total number of videos: {len(video_list)}")
+    print("Unique true labels found:", set(y_trues))
     y_preds = []
 
     for video_path in tqdm(video_list):
@@ -45,27 +47,30 @@ def predict(datafolder: str | Path,
                                        model= model,
                                        fall_folder_name= fall_folder_name,
                                        nofall_folder_name= nofall_folder_name,
-                                       state_dict_path= model_path,
                                        device= device)
         y_preds.append(pred_label)
 
+    display_labels = [fall_folder_name, nofall_folder_name]
+
     confmat = confusion_matrix(y_true= y_trues,
-                               y_pred = y_preds)
+                               y_pred= y_preds,
+                               labels= display_labels)
     
     display = ConfusionMatrixDisplay(confusion_matrix= confmat,
-                                     display_labels= [fall_folder_name, nofall_folder_name])
+                                     display_labels= display_labels)
     
     display.plot()
     plt.show()
 
     report = classification_report(y_true= y_trues,
                                    y_pred= y_preds,
-                                   target_names= [fall_folder_name, nofall_folder_name])
+                                   labels= display_labels,
+                                   target_names= display_labels)
     
     print(report)
     
 
-predict(datafolder= "GMDCSA24-A-Dataset-for-Human-Fall-Detection-in-Videos/Subject 3",
+predict(datafolder= "GMDCSA24-A-Dataset-for-Human-Fall-Detection-in-Videos",
         fall_folder_name= "Fall",
         nofall_folder_name= "ADL")
 
