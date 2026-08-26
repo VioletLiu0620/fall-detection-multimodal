@@ -10,7 +10,7 @@ The number in the main README (91% accuracy, 0.89 fall recall) comes from a held
 
 ## Results
 
-![Confusion matrix on GMDCSA24](confusion_matrix.png)
+![Confusion matrix on GMDCSA24](assets/confusion_matrix.png)
 
 | Class        | Precision | Recall | F1-score | Support |
 |--------------|-----------|--------|----------|---------|
@@ -31,10 +31,10 @@ Most portfolio fall-detection projects report one clean test-set number and stop
 ## Reproducing this
 
 ```bash
-python predict.py
+python src/predict.py
 ```
 
-Edit the `datafolder`, `fall_folder_name`, and `nofall_folder_name` arguments at the bottom of `predict.py` to point at wherever you've downloaded GMDCSA24, organized into per-class subfolders.
+Run from the repository root. Edit the `datafolder`, `fall_folder_name`, and `nofall_folder_name` arguments at the bottom of `src/predict.py` to point at wherever you've downloaded GMDCSA24, organized into per-class subfolders.
 
 ## Dataset citation
 

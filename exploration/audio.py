@@ -8,10 +8,12 @@ from pathlib import Path
 audio_model = yamnet.yamnet(pretrained=True)
 audio_model.eval()
 
-audio_folder = Path("audio_data")
+REPO_ROOT = Path(__file__).resolve().parent.parent
+audio_folder = REPO_ROOT / "audio_data"
 audio_list = audio_folder.glob("*.wav")
 
-df = pd.read_csv("yamnet_class_map.csv")
+# yamnet_class_map.csv lives alongside this script, not at the repo root.
+df = pd.read_csv(Path(__file__).resolve().parent / "yamnet_class_map.csv")
 class_list = df["display_name"].tolist()
 
 # the distress classes we care about for falls

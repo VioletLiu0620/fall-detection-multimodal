@@ -1,4 +1,3 @@
-import helper_functions
 from helper_functions import Fall2d, mov_to_csv, csv_to_pred_label
 from pathlib import Path
 import torch

@@ -1,6 +1,6 @@
-# Multimodal Fall Detection
+# Skeleton-Based Fall Detection
 
-Skeleton-based fall detection: classifies short video clips as **Fall** or **No Fall** (ADL) from human pose keypoints extracted with YOLOv8-Pose.
+Pose-based fall detection: classifies short video clips as **Fall** or **No Fall** (ADL) from human pose keypoints extracted with YOLOv8-Pose. The trained model uses skeleton motion only; an audio branch was explored but deliberately not integrated (see "Audio Exploration" below).
 
 ![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)
 ![PyTorch](https://img.shields.io/badge/PyTorch-EE4C2C?logo=pytorch&logoColor=white)
@@ -11,7 +11,7 @@ Skeleton-based fall detection: classifies short video clips as **Fall** or **No 
 
 ## Motivation
 
-A missed fall matters most for someone living alone: no one's there to notice, and the injury has time to get worse before anyone checks in. The hard part of this problem isn't spotting that a body is horizontal. It's telling apart a person who fell from a person who lay down on purpose, since both produce nearly identical skeleton poses. Posture alone is often ambiguous enough that a second signal, like the sound of an impact, is worth pursuing (see Limitations for why the audio branch stayed exploratory).
+A missed fall matters most for someone living alone: no one's there to notice, and the injury has time to get worse before anyone checks in. The hard part of this problem isn't spotting that a body is horizontal. It's telling apart a person who fell from a person who lay down on purpose, since both produce nearly identical skeleton poses. Posture alone is often ambiguous enough that a second signal, like the sound of an impact, seemed worth testing, which is why an audio classifier was built and evaluated even though it didn't make it into the final system.
 
 ## Results
 
@@ -29,7 +29,7 @@ Fall recall (0.89) is the metric that matters most: a missed fall is far more co
 
 **Caught a data leak that was inflating accuracy to 98%.** Of 5,440 keypoint files in the training dataset, only 1,539 turned out to be unique by MD5 content hash, 72% were byte-identical duplicates scattered across folders. A random train/test split put copies of the same file on both sides, so the model was partly being graded on data it had memorized. Deduplicating by content hash before splitting dropped the reported accuracy from a misleading 98% to a real 91%.
 
-**Caught a latent double-normalization bug before it reached a trained model.** The skeleton-centering and scaling transform originally lived only inside the training `Dataset` (`FallDataset`'s `transform` argument), not in `process_one_video` itself; `predict.py` calls `process_one_video` directly and never touches `Dataset`, so its inputs were normalized correctly the whole time. Later I moved the same transform into `process_one_video` so preprocessing is self-contained, which meant `data.py`'s `get_dataloaders` would have started applying it twice (once inside `process_one_video`, again via `Dataset`) had I trained again without changing anything else. I caught this by reading the two code paths side by side, and set `Dataset`'s `transform` to `None` before it ever produced a checkpoint. No model was retrained in between, so neither the FallVision 91% nor the GMDCSA24 result below was ever generated from a mismatched or double-normalized input; the bug is a real one, but it never shipped a bad number.
+**Caught a latent double-normalization bug before it reached a trained model.** The skeleton-centering and scaling transform originally lived only inside the training `Dataset` (`FallDataset`'s `transform` argument), not in `process_one_video` itself; `predict.py` calls `process_one_video` directly and never touches `Dataset`, so its inputs were normalized correctly the whole time. Later the same transform moved into `process_one_video` so preprocessing is self-contained, which meant `data.py`'s `get_dataloaders` would have started applying it twice (once inside `process_one_video`, again via `Dataset`) had the model been retrained without changing anything else. Reading the two code paths side by side caught this, and `Dataset`'s `transform` was set to `None` before it ever produced a checkpoint. No model was retrained in between, so neither the FallVision 91% nor the GMDCSA24 result below was ever generated from a mismatched or double-normalized input; the bug is a real one, but it never shipped a bad number.
 
 **Ran a cross-dataset generalization test, which most similar projects skip.** Testing on a second, independently collected dataset (GMDCSA24) is what actually surfaces domain shift instead of hiding behind a single in-distribution number. See [`RESULTS.md`](RESULTS.md).
 
@@ -37,22 +37,30 @@ Fall recall (0.89) is the metric that matters most: a missed fall is far more co
 
 **Pipeline:** video &rarr; YOLOv8-Pose keypoint extraction (17 COCO joints per frame) &rarr; per-video cleanup &rarr; CNN classifier.
 
-**Preprocessing** (`preprocess.py`), per video:
+**Preprocessing** (`src/preprocess.py`), per video:
 1. Deduplicate skeletons within a frame. Some frames have more than one detected skeleton (a real person plus a low-confidence phantom detection); keep the one with the highest average confidence.
 2. Reshape the long-format keypoint CSV into a `(frames, 17, 3)` array: 17 joints, each with x, y, and detection confidence.
 3. Resample every video to a fixed 64 frames via linear interpolation, so variable-length clips all end up the same shape.
 4. Normalize: center each skeleton on the mid-hip point (removes absolute position) and scale to roughly a unit range.
 
-**Model** (`Fall2d` in `helper_functions.py`): a small 2D CNN that treats each clip as a `(3, 64, 17)` image, 3 channels for x/y/confidence, 64 frames as height, 17 joints as width, so its filters pick up motion patterns across neighboring frames and joints. Two conv blocks, max pooling, dropout, and a linear classifier.
+**Model** (`Fall2d` in `src/helper_functions.py`): a small 2D CNN that treats each clip as a `(3, 64, 17)` image, 3 channels for x/y/confidence, 64 frames as height, 17 joints as width, so its filters pick up motion patterns across neighboring frames and joints. Two conv blocks, max pooling, dropout, and a linear classifier.
 
 **Regularization:** on the deduplicated dataset the model overfit hard. Input scaling, dropout, and on-the-fly Gaussian-noise augmentation of joint coordinates during training brought the train/test gap down from about 12 points to about 3.
+
+## Audio Exploration (Not Integrated)
+
+Posture alone is ambiguous for the hardest cases (a gentle fall versus lying down), so a YAMNet-based distress-sound classifier (`exploration/audio.py`) was built to test whether audio could resolve them: extract each clip's audio, run it through YAMNet, and check whether fall-relevant classes (scream, groan, thud, crying) show up as top predictions.
+
+The test set was 7 clips, only one of which was a real recording of someone falling; the rest were self-recorded imitations of what a fall might sound like. That's nowhere near enough to validate a classifier on. The one genuine recording did get flagged: YAMNet's top label for it was "Groan" (0.42) rather than "Screaming," but "Groan" is one of the distress keywords the detection logic watches for, so it still would have tripped the filter. That's a promising anecdote, not evidence.
+
+Two things kept this out of the main pipeline rather than pushed toward fusion: the evaluation set is too small and too synthetic to know if it generalizes past luck, and most real home-monitoring setups don't reliably capture audio anyway, which caps how much value an audio branch adds even if it worked. Building something and then deciding not to ship it, with the evidence for that decision written down, felt more honest than fusing in a classifier validated on 7 clips because it was already built. If a larger, more representative distress-audio dataset becomes available, this is the first thing to revisit (see Future work).
 
 ## Limitations
 
 - No subject IDs in the source dataset, so a subject-independent split wasn't possible. The same person may show up in both train and test sets, which likely makes the FallVision numbers somewhat optimistic. This applies equally to any model trained on this data, so relative comparisons still hold.
 - After deduplication, about 1,539 unique videos remain. That's not a lot, and it's why regularization mattered so much.
 - The source dataset skews young and male, which may not represent the elderly population this system is actually meant for.
-- I tried a YAMNet-based audio classifier (`audio.py`) to catch distress sounds (screams, impact thuds) as a second signal for the ambiguous cases. The test set was 7 clips, only one of which was a real recording of someone falling (the rest were me imitating what a fall might sound like), so it's nowhere near enough to draw a real conclusion. The one genuine recording did get flagged: YAMNet's top label for it was "Groan" (0.42) rather than "Screaming," but "Groan" is one of the distress keywords the fusion logic watches for, so it still would have tripped the filter. That's a promising anecdote, not evidence, which is why the audio branch stayed exploratory instead of getting fused into the main pipeline.
+- The audio branch (above) stayed exploratory rather than validated; the model shipped here is skeleton-only.
 
 ## Future work
 
@@ -63,16 +71,29 @@ Fall recall (0.89) is the metric that matters most: a missed fall is far more co
 
 ## Repository structure
 
-| File | Role |
-|---|---|
-| `preprocess.py` | Per-video cleaning: dedup, reshape, resample, normalize. |
-| `data.py` | Dataset assembly: content-hash dedup, train/test split, augmentation, PyTorch `Dataset`/`DataLoader`. |
-| `helper_functions.py` | `Fall2d` model definition, video-to-keypoint-CSV extraction (YOLOv8-Pose), and the CSV-to-label inference helper. |
-| `train.py` | Training loop, best-checkpoint saving, confusion matrix and classification report on the FallVision test split. |
-| `predict.py` | Runs the trained model against a folder of new videos (used for the GMDCSA24 cross-dataset test in `RESULTS.md`). |
-| `test_custom_csv.py` | Quick single-file sanity check against a saved checkpoint. |
-| `audio.py` | YAMNet-based distress-sound classifier, exploratory, not part of the final pipeline (see Limitations). |
-| `check_dup.py` | Standalone script that reports the content-hash duplication rate in the training data. |
+```
+fall-detection-multimodal/
+├── src/                    # core pipeline
+│   ├── preprocess.py       # per-video cleaning: dedup, reshape, resample, normalize
+│   ├── data.py              # dataset assembly: content-hash dedup, split, augmentation, DataLoaders
+│   ├── helper_functions.py # Fall2d model, video-to-keypoint-CSV extraction, inference helper
+│   ├── train.py             # training loop, best-checkpoint saving, evaluation on FallVision
+│   └── predict.py           # run the trained model against a folder of new videos
+├── scripts/                 # one-off utilities, not imported by the pipeline
+│   ├── check_dup.py         # reports content-hash duplication rate in the training data
+│   ├── open_rar.py          # extracts a downloaded .rar of keypoint CSVs into data/
+│   └── mov_to_label.py      # stub, not implemented (see file header)
+├── exploration/              # not part of the shipped pipeline
+│   ├── audio.py              # YAMNet distress-sound classifier (see Audio Exploration above)
+│   └── yamnet_class_map.csv  # YAMNet's class label reference, needed by audio.py
+├── tests/
+│   └── test_custom_csv.py    # quick manual sanity check against a saved checkpoint
+├── assets/
+│   └── confusion_matrix.png  # GMDCSA24 confusion matrix, referenced from RESULTS.md
+├── best_model.pth / best_model_test_91acc.pth   # saved checkpoints
+├── README.md
+└── RESULTS.md                # cross-dataset generalization writeup
+```
 
 ## Running it yourself
 
@@ -80,10 +101,10 @@ Data is not included in this repository. To run `predict.py` on your own videos,
 
 ```bash
 pip install torch ultralytics pandas numpy scikit-learn matplotlib tqdm mlxtend
-python predict.py
+python src/predict.py
 ```
 
-Edit the `datafolder`, `fall_folder_name`, and `nofall_folder_name` arguments at the bottom of `predict.py` to point at your data. The script extracts keypoints with YOLOv8-Pose, runs the trained CNN (`best_model_test_91acc.pth`), and prints a confusion matrix and classification report.
+Run this from the repository root (checkpoints and the YOLO weights are loaded by relative path). Edit the `datafolder`, `fall_folder_name`, and `nofall_folder_name` arguments at the bottom of `src/predict.py` to point at your data. The script extracts keypoints with YOLOv8-Pose, runs the trained CNN (`best_model_test_91acc.pth`), and prints a confusion matrix and classification report.
 
 ## Datasets
 

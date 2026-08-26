@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 from torch import nn
 from data import get_dataloaders
+from helper_functions import Fall2d
 from timeit import default_timer as timer
 from tqdm.auto import tqdm
 from matplotlib import pyplot as plt
@@ -12,38 +13,8 @@ from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, classifica
 
 train_dataloader, test_dataloader, paths_test = get_dataloaders(BATCH_SIZE=16, NUM_WORKERS=0) # could be os_count() but use 0 here for mac's child process issue
 
-class Fall2d(nn.Module):
-    def __init__(self,
-                 input_shape: int,
-                 output_shape: int,
-                 hidden_units: int):
-        super().__init__()
-        self.conv_layers = nn.Sequential(
-            nn.Conv2d(in_channels= input_shape, 
-                      out_channels= hidden_units,
-                      kernel_size= 3,
-                      stride= 1,
-                      padding= 0), # (64, 17) -> (62, 15)
-            nn.ReLU(),
-            nn.Conv2d(in_channels= hidden_units,
-                      out_channels= hidden_units,
-                      kernel_size= 3,
-                      stride= 1,
-                      padding= 0), # (62, 15) -> (60, 13)
-            nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2,
-                         stride= 2), # MaxPool stride's default is the same as the kernel size
-            # (60, 13) -> (30, 6)
-
-            nn.Dropout(0.5),
-            nn.Flatten(),
-            nn.LazyLinear(out_features= output_shape)
-        )
-    def forward(self, x):
-        # Originally we have torch.Size([32, 64, 17, 3]): (batches, frames, joints, coords), but coords is what we want to see the difference across frames and joints
-        # Therefore, we need to permute it because of PyTorch convention that (batches, channels, height, width) -> (32, 3, 64, 17)
-
-        return self.conv_layers(x.permute(0, 3, 1, 2))
+# NOTE: Fall2d is defined once, in helper_functions.py, and imported here so
+# training and inference are always guaranteed to use the exact same architecture.
 
 # Device agnostic code
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -222,11 +193,11 @@ false_negative = [w for w in wrong_files if w["pred"] == 1 and w["true"] == 0] #
 
 print(f"Number of false positive (false alarm): {len(false_positive)}")
 for w in false_positive:
-    print(f"{w["files"]}")
+    print(f"{w['files']}")
 
 print(f"Number of false negative (missed alarm): {len(false_negative)}")
 for w in false_negative:
-    print(f"{w["files"]}")
+    print(f"{w['files']}")
 
 
 ## Test for model actually working
