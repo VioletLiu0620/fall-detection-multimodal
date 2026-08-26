@@ -27,25 +27,23 @@ Fall recall (0.89) is the metric that matters most: a missed fall is far more co
 
 ## Key engineering findings
 
-**Caught a data leak that was inflating accuracy to 98%.** Of 5,440 keypoint files in the training dataset, only 1,539 turned out to be unique by MD5 content hash, 72% were byte-identical duplicates scattered across folders. A random train/test split put copies of the same file on both sides, so the model was partly being graded on data it had memorized. Deduplicating by content hash before splitting dropped the reported accuracy from a misleading 98% to a real 91%.
-
-**Caught a latent double-normalization bug before it reached a trained model.** The skeleton-centering and scaling transform originally lived only inside the training `Dataset` (`FallDataset`'s `transform` argument), not in `process_one_video` itself; `predict.py` calls `process_one_video` directly and never touches `Dataset`, so its inputs were normalized correctly the whole time. Later the same transform moved into `process_one_video` so preprocessing is self-contained, which meant `data.py`'s `get_dataloaders` would have started applying it twice (once inside `process_one_video`, again via `Dataset`) had the model been retrained without changing anything else. Reading the two code paths side by side caught this, and `Dataset`'s `transform` was set to `None` before it ever produced a checkpoint. No model was retrained in between, so neither the FallVision 91% nor the GMDCSA24 result below was ever generated from a mismatched or double-normalized input; the bug is a real one, but it never shipped a bad number.
-
-**Ran a cross-dataset generalization test, which most similar projects skip.** Testing on a second, independently collected dataset (GMDCSA24) is what actually surfaces domain shift instead of hiding behind a single in-distribution number. See [`RESULTS.md`](RESULTS.md).
+- Deduplicating the training files exposed a data leak that inflated accuracy to 98%. Out of 5,440 keypoint files in FallVision, only 1,539 were unique. The remaining 72% were byte-identical duplicates scattered across folders. A standard random train/test split placed identical copies on both sides, letting the model memorize files. Cleaning out duplicate hashes brought the real accuracy to 91%.
+- Inspecting the training pipeline caught a double-normalization bug before training ruined a checkpoint. The spatial scaling transform was running inside the `Dataset` class, but `process_one_video` was also scaling inputs directly. Had the dataset been reassembled without setting `Dataset` transform parameters to `None`, inputs would have been normalized twice.
+- Testing across datasets revealed heavy domain shift. Evaluating on GMDCSA24 dropped fall recall from 0.89 to 0.66, showing how badly single-dataset benchmarks mask real-world degradation.
 
 ## Approach
 
-**Pipeline:** video &rarr; YOLOv8-Pose keypoint extraction (17 COCO joints per frame) &rarr; per-video cleanup &rarr; CNN classifier.
+Video clips pass through YOLOv8-Pose to extract 17 COCO keypoints per frame before entering a 2D CNN classifier (`Fall2d` in `src/helper_functions.py`).
 
-**Preprocessing** (`src/preprocess.py`), per video:
-1. Deduplicate skeletons within a frame. Some frames have more than one detected skeleton (a real person plus a low-confidence phantom detection); keep the one with the highest average confidence.
-2. Reshape the long-format keypoint CSV into a `(frames, 17, 3)` array: 17 joints, each with x, y, and detection confidence.
-3. Resample every video to a fixed 64 frames via linear interpolation, so variable-length clips all end up the same shape.
-4. Normalize: center each skeleton on the mid-hip point (removes absolute position) and scale to roughly a unit range.
+Per-video preprocessing in `src/preprocess.py` cleans and formats spatial data through four steps:
+1. Skeletons within a single frame are deduplicated by picking the detection with the highest average confidence score.
+2. Long-format CSV keypoints reshape into a `(frames, 17, 3)` tensor tracking 17 joints across x, y, and confidence values.
+3. Linear interpolation resamples every video to 64 frames to standardize clip length.
+4. Joints center on the mid-hip point and scale to unit range to remove position bias.
 
-**Model** (`Fall2d` in `src/helper_functions.py`): a small 2D CNN that treats each clip as a `(3, 64, 17)` image, 3 channels for x/y/confidence, 64 frames as height, 17 joints as width, so its filters pick up motion patterns across neighboring frames and joints. Two conv blocks, max pooling, dropout, and a linear classifier.
+The classifier treats the clip as a `(3, 64, 17)` tensor, mapping 3 channels across 64 frames (height) and 17 joints (width). Two convolutional blocks, max pooling, dropout, and a final linear layer learn spatial motion patterns across adjacent joints and frames.
 
-**Regularization:** on the deduplicated dataset the model overfit hard. Input scaling, dropout, and on-the-fly Gaussian-noise augmentation of joint coordinates during training brought the train/test gap down from about 12 points to about 3.
+Because the model overfit early on the smaller deduplicated dataset, regularization was applied during training. Input scaling, dropout, and on-the-fly Gaussian noise added to joint coordinates brought the train/test performance gap down from 12 percentage points to 3.
 
 ## Audio Exploration (Not Integrated)
 
@@ -60,14 +58,14 @@ Two things kept this out of the main pipeline rather than pushed toward fusion: 
 - No subject IDs in the source dataset, so a subject-independent split wasn't possible. The same person may show up in both train and test sets, which likely makes the FallVision numbers somewhat optimistic. This applies equally to any model trained on this data, so relative comparisons still hold.
 - After deduplication, about 1,539 unique videos remain. That's not a lot, and it's why regularization mattered so much.
 - The source dataset skews young and male, which may not represent the elderly population this system is actually meant for.
-- The audio branch (above) stayed exploratory rather than validated; the model shipped here is skeleton-only.
+- The audio branch stayed exploratory rather than validated; the model shipped here is skeleton-only.
 
 ## Future work
 
-- Collect a real (or at least larger and more representative) distress-audio dataset before deciding whether the audio branch is worth building out.
-- Velocity/acceleration features derived from consecutive frames, not just static joint positions per frame.
-- A graph-based model (ST-GCN), which encodes the actual skeletal connectivity instead of treating joints as adjacent pixels in an image.
-- Recall-oriented threshold tuning and class-weighted loss, trading some precision for fewer missed falls, which is the right tradeoff for a safety system.
+- Collect a real distress-audio dataset before deciding whether the audio branch is worth building out.
+- Derive velocity and acceleration features from consecutive frames instead of relying solely on static joint positions per frame.
+- Switch to a graph-based model (ST-GCN) to encode true skeletal connectivity instead of treating joints as adjacent pixels in an image grid.
+- Tune thresholds for recall and apply class-weighted loss to trade some precision for fewer missed falls.
 
 ## Repository structure
 
