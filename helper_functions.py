@@ -63,38 +63,38 @@ def mov_to_csv(video_path: str|Path):
 
 def csv_to_pred_label(csv_file: str | Path,
                       model: nn.Module,
-                      state_dict_path: str | Path,
+                      fall_folder_name: str,
+                      nofall_folder_name: str,
                       device: str | torch.device = "cpu" ):
     """
     Args:
         csv_file (str | Path): str or path of the csv file
         model (nn.Module): any PyTorch model for classification
-        state_dict_path (str | Path): str or path of the stored state_dict values (weight & biases)
+        fall_folder_name (str): the directory name of where fall videos are located
+        nofall_folder_name (str): the directory name of where no fall/ADL videos are located
         device (str | Path): device that the model be on, default to cpu
 
     Returns:
-        pred_label (str): the label that model predicted on - "Fall" or "No Fall"
+        pred_label (str): the label that model predicted on - "Fall" or "No Fall" (labels are the f/nf folder name that user given)
     """
-    label_map = {0: "Fall",
-                1: "No Fall"}
+    label_map = {0: fall_folder_name,
+                 1: nofall_folder_name}
     
     arr = process_one_video(video_csv= pd.read_csv(csv_file))
     X = torch.from_numpy(arr).float().unsqueeze(dim=0).to(device)
 
     model.to(device)
-    model.load_state_dict(torch.load(state_dict_path))
 
     model.eval()
     with torch.inference_mode():
         y_logits = model(X)
-        print(f"Logits: {y_logits}")
         y_pred = torch.softmax(y_logits, dim=1).argmax(dim=1)
         y_label = label_map[y_pred.item()]
 
-    file_path = Path(csv_file) # doesn't matter whether csv_file is a string or path, filename becomes a path object
-    filename = file_path.stem
+    # file_path = Path(csv_file) # doesn't matter whether csv_file is a string or path, filename becomes a path object
+    # filename = file_path.stem
 
-    print(f"The file {filename} is classified as {y_label}")
+    # print(f"The file {filename} is classified as {y_label}")
 
     return y_label
 

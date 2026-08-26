@@ -8,6 +8,7 @@ data/
 *.jpeg
 *.rar
 *.wav
+*.csvgit 
 .vscode/
 checkpoints/   
 __pycache__/

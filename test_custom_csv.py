@@ -4,7 +4,7 @@ from torch import nn
 import pandas as pd
 import numpy as np
 
-csv_path = "c_f_s_a.csv"
+csv_path = "c_f_c_a.csv"
 video_df = pd.read_csv(csv_path)
 X = torch.from_numpy(process_one_video(video_csv=video_df)).float().unsqueeze(dim=0)
 
