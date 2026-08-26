@@ -9,27 +9,6 @@ from sklearn.model_selection import train_test_split
 from tqdm.auto import tqdm
 import hashlib
 
-## We need to normalize: Center on hip
-def custom_transform(video_array):
-    ar = video_array.copy()
-    xy = ar[:, :, :2]
-    # print(xy.shape)
-    conf = ar[:, :, 2:]
-
-    LEFT_HIP, RIGHT_HIP = 11, 12
-    mid_hip = (xy[:, LEFT_HIP, :] + xy[:, RIGHT_HIP, :]) / 2 # midhip.shape = (64, 2)
-    xy =  xy - mid_hip[:, None, :] # change midhip into (64, 1, 2) to be able minus xy
-    xy = xy / 200.0                        # ← scale to roughly ±1 range
-    result = np.concatenate((xy, conf), axis=2) # conf is joining at last dimenstion, xy: (64, 17, 2) + conf: (64, 17, 1) - > result: (64, 17, 3)
-
-    return result
-
-# first = X_train[0]
-# print(f"Shape before normalize: {first.shape}")
-# result = custom_transfrom(first)
-# print(result)
-# print(f"Shape after normalize: {result.shape}")
-
 ## Define some data augmentaion function
 
 def add_noise(video_array, std: float):
@@ -121,12 +100,12 @@ def get_dataloaders(BATCH_SIZE=32, NUM_WORKERS=0):
     # Create train, test dataset
     train_data = FallDataset(X= X_train,
                              y= y_train,
-                             transform= custom_transform,
+                             transform= None,
                              augmentation= True)
 
     test_data = FallDataset(X= X_test,
                             y= y_test,
-                            transform= custom_transform,
+                            transform= None,
                             augmentation= False)
 
     # Create dataloader
