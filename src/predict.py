@@ -32,7 +32,7 @@ def predict(datafolder: str | Path,
     video_list = []
     y_trues = []
 
-    for video in datafolder_path.rglob("*"):
+    for video in sorted(list(datafolder_path.rglob("*"))):
         if video.suffix.lower() in [".mp4", ".mov"]:
             video_list.append(video)
             y_trues.append(video.parent.name)
