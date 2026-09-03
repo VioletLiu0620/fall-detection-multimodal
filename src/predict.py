@@ -25,9 +25,13 @@ def predict(datafolder: str | Path,
     model = Fall2d(input_shape=3,
                    output_shape= 2,
                    hidden_units=16)
-    model.load_state_dict(torch.load(model_path))
+    dummy_input = torch.randn(1, 64, 17, 3) 
+    model(dummy_input) 
+    
+    model.load_state_dict(torch.load(model_path, map_location=device))
     model.to(device)
     model.eval()
+
     datafolder_path = Path(datafolder)
     video_list = []
     y_trues = []
