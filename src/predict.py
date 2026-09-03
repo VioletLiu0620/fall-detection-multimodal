@@ -27,7 +27,7 @@ def predict(datafolder: str | Path,
                    hidden_units=16)
     model.load_state_dict(torch.load(model_path))
     model.to(device)
-
+    model.eval()
     datafolder_path = Path(datafolder)
     video_list = []
     y_trues = []
@@ -77,7 +77,7 @@ if __name__ == "__main__":
     nofall_folder_name = input("Enter the name of the folder that consist all no fall/ADL video clips:")
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Model testing on {device}")
-    
+
     start_time = timer()
 
     predict(datafolder= datafolder,
