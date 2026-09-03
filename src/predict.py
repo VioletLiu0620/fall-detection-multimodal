@@ -4,6 +4,7 @@ import torch
 from matplotlib import pyplot as plt
 from tqdm.auto import tqdm
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, classification_report
+from timeit import default_timer as timer
 
 def predict(datafolder: str | Path,
             fall_folder_name: str,
@@ -69,28 +70,22 @@ def predict(datafolder: str | Path,
     print(report)
     
 
-predict(datafolder= "GMDCSA24-A-Dataset-for-Human-Fall-Detection-in-Videos",
-        fall_folder_name= "Fall",
-        nofall_folder_name= "ADL")
+if __name__ == "__main__":
 
-### Dataset: GMDCSA24-A-Dataset-for-Human-Fall-Detection-in-Videos
-# Citation:
-#       E. Alam, A. Sufian, P. Dutta, M. Leo, I. A. Hameed "GMDCSA24: A Dataset for Human Fall Detection in Videos", Data in Brief (communicated).
+    datafolder = input("Enter the path to the datafolder:")
+    fall_folder_name = input("Enter the name of the folder that consist all fall video clips:")
+    nofall_folder_name = input("Enter the name of the folder that consist all no fall/ADL video clips:")
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"Model testing on {device}")
+    
+    start_time = timer()
 
-# ADL stands for Activities of Daily Living
+    predict(datafolder= datafolder,
+            fall_folder_name= fall_folder_name,
+            nofall_folder_name= nofall_folder_name,
+            device = device)
 
-# Subject 1 Results:
-# Fall: 10/16 
-# ADL: 16/16 
+    end_time = timer()
 
-# Subject 2 Results:
-# Fall: 15/25
-# ADL: 20/23
+    print(f"Total time used: {end_time - start_time}")
 
-# Subject 3 Results:
-# Fall: 15/21
-# ADL: 20/22
-
-# Subject 4 Results:
-# Fall: 12/17
-# ADL: 16/20
