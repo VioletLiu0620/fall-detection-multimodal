@@ -19,7 +19,7 @@ def mov_to_csv(video_path: str|Path):
     """
     print(f"Processing video file {video_path} to csv")
 
-    results = model(video_path, stream= True, verbose= False) # stream= True reduce memory consumption, verbose= False to stop printing long detection message
+    results = model(video_path, stream= True, verbose= False, device= "cpu") # stream= True reduce memory consumption, verbose= False to stop printing long detection message
 
     result_list = []
     joint_names = [
@@ -36,11 +36,6 @@ def mov_to_csv(video_path: str|Path):
 
         if num_ppl == 0:
             continue
-
-        # FIX: If multiple people/artifacts are detected, keep only the first track
-        if num_ppl > 1:
-            kpts = kpts[0:1] # Slice to keep only shape (1, 17, 3)
-            num_ppl = 1
 
         flat_kpts = kpts.reshape(-1, 3).cpu().numpy() # from (num_ppl, 17, 3) but now treat it as (num_ppl*17, 3), flatten to 2D from a 3D matrix
         df = pd.DataFrame(flat_kpts, columns= ["X", "Y", "Confidence"])
