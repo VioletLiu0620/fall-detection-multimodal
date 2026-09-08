@@ -9,17 +9,18 @@ from preprocess import process_one_video
 
 model = YOLO("yolov8n-pose.pt")
 
-def mov_to_csv(video_path: str|Path):
+def mov_to_csv(video_path: str | Path, device: str | torch.device = "cpu"):
     """
     Args:
         video_path (str | Path): full video path name, including the extension .mov or .mp4
+        device (str | torch.device): name of the target device, default to cpu
 
     Returns:
         the name of a csv file with columns "Frame", "Keypoint", "X", "Y", "Confidence"
     """
     print(f"Processing video file {video_path} to csv")
 
-    results = model(video_path, stream= True, verbose= False, device= "cpu") # stream= True reduce memory consumption, verbose= False to stop printing long detection message
+    results = model(video_path, stream= True, verbose= False, device= device) # stream= True reduce memory consumption, verbose= False to stop printing long detection message
 
     result_list = []
     joint_names = [
@@ -48,8 +49,7 @@ def mov_to_csv(video_path: str|Path):
 
         result_list.append(df)
 
-    video_path = str(video_path)
-    video_name = video_path.split(".")[0]
+    video_name = Path(video_path).with_suffix(".csv")
     output_csv_name = f"{video_name}.csv"
 
     if result_list:

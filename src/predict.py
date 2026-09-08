@@ -46,7 +46,7 @@ def predict(datafolder: str | Path,
     y_preds = []
 
     for video_path in tqdm(video_list):
-        output_csv = mov_to_csv(video_path)
+        output_csv = mov_to_csv(video_path= video_path, device= device)
         pred_label = csv_to_pred_label(csv_file= output_csv,
                                        model= model,
                                        fall_folder_name= fall_folder_name,
