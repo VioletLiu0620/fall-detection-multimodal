@@ -17,19 +17,23 @@ A missed fall matters most for someone living alone: no one's there to notice, a
 
 Evaluated on a held-out, deduplicated split of the training dataset (FallVision, 308 test videos):
 
-| Class        | Precision | Recall | F1-score |
-|--------------|-----------|--------|----------|
-| Fall         | 0.91      | 0.89   | 0.90     |
-| No Fall      | 0.92      | 0.93   | 0.92     |
-| **Accuracy** |           |        | **0.91** |
+| Class        | Precision | Recall | F1-score | Support |
+|--------------|-----------|--------|----------|---------|
+| Fall         | 0.86      | 0.90   | 0.88     | 134     |
+| No Fall      | 0.92      | 0.89   | 0.90     | 174     |
+| **Accuracy** |           |        | **0.89** | 308     |
 
-Fall recall (0.89) is the metric that matters most: a missed fall is far more costly than a false alarm. But a single held-out split from the training distribution only proves the model learned FallVision, not that it generalizes. See [`RESULTS.md`](RESULTS.md) for a second evaluation on GMDCSA24, a completely separate fall-detection dataset with different subjects and cameras: fall recall there drops to 0.66, and that gap is the more honest number.
+120 of 134 falls caught, 14 missed, 20 false alarms.
+
+Fall recall (0.90) is the metric that matters most: a missed fall is far more costly than a false alarm. But a single held-out split from the training distribution only proves the model learned FallVision, not that it generalizes. See [`RESULTS.md`](RESULTS.md) for a second evaluation on GMDCSA24, a completely separate fall-detection dataset with different subjects and cameras: accuracy there is 0.79 and fall recall 0.76, and that gap is the more honest number.
 
 ## Key engineering findings
 
-- Deduplicating the training files exposed a data leak that inflated accuracy to 98%. Out of 5,440 keypoint files in FallVision, only 1,539 were unique. The remaining 72% were byte-identical duplicates scattered across folders. A standard random train/test split placed identical copies on both sides, letting the model memorize files. Cleaning out duplicate hashes brought the real accuracy to 91%.
+- Deduplicating the training files exposed a data leak that inflated accuracy to 98%. Out of 5,440 keypoint files in FallVision, only 1,539 were unique. The remaining 72% were byte-identical duplicates scattered across folders. A standard random train/test split placed identical copies on both sides, letting the model memorize files. Cleaning out duplicate hashes brought accuracy down to the honest figure reported above.
 - Inspecting the training pipeline caught a double-normalization bug before training ruined a checkpoint. The spatial scaling transform was running inside the `Dataset` class, but `process_one_video` was also scaling inputs directly. Had the dataset been reassembled without setting `Dataset` transform parameters to `None`, inputs would have been normalized twice.
-- Testing across datasets revealed heavy domain shift. Evaluating on GMDCSA24 dropped fall recall from 0.89 to 0.66, showing how badly single-dataset benchmarks mask real-world degradation.
+- Fixing a silent data bug lowered the headline number and improved the model. The joint-order fix below moved in-distribution accuracy from 0.91 down to 0.89, while cross-dataset fall recall rose from 0.66 to 0.76. The old 0.91 was partly the model exploiting a machine-specific artifact in its own training data; the new numbers are lower, honest, and reproducible anywhere.
+- An unstable sort was silently scrambling every skeleton. `reshape()` sorted keypoint rows by frame number alone, but all 17 joints in a frame share that number, and pandas' default sort is not stable, so the joints came back in arbitrary order before being reshaped into fixed slots. Across 5,858 frames, **zero** had joints in the right slots and **zero** had the hips where the mid-hip centering expected them. The permutation is deterministic per numpy build but differs across builds, so the same code and the same weights scored 0.81 on macOS and 0.41 on Colab. Sorting on the joint name as well as the frame fixed it; retraining lifted GMDCSA24 fall recall from 0.66 to 0.76 and made the result identical on both machines. Full writeup in [`RESULTS.md`](RESULTS.md).
+- Testing across datasets revealed heavy domain shift, and it is per-person rather than per-dataset. On GMDCSA24 accuracy ranges from 0.94 on subject 1 to 0.68 on subject 4, so a single pooled benchmark number hides most of the real-world variation.
 
 ## Approach
 
@@ -37,13 +41,13 @@ Video clips pass through YOLOv8-Pose to extract 17 COCO keypoints per frame befo
 
 Per-video preprocessing in `src/preprocess.py` cleans and formats spatial data through four steps:
 1. Skeletons within a single frame are deduplicated by picking the detection with the highest average confidence score.
-2. Long-format CSV keypoints reshape into a `(frames, 17, 3)` tensor tracking 17 joints across x, y, and confidence values.
+2. Long-format CSV keypoints reshape into a `(frames, 17, 3)` tensor tracking 17 joints across x, y, and confidence values. Rows are sorted by frame **and** by joint name (via an ordered categorical), so slot *k* always holds joint *k* regardless of CSV row order, pandas version, or CPU architecture.
 3. Linear interpolation resamples every video to 64 frames to standardize clip length.
 4. Joints center on the mid-hip point and scale to unit range to remove position bias.
 
 The classifier treats the clip as a `(3, 64, 17)` tensor, mapping 3 channels across 64 frames (height) and 17 joints (width). Two convolutional blocks, max pooling, dropout, and a final linear layer learn spatial motion patterns across adjacent joints and frames.
 
-Because the model overfit early on the smaller deduplicated dataset, regularization was applied during training. Input scaling, dropout, and on-the-fly Gaussian noise added to joint coordinates brought the train/test performance gap down from 12 percentage points to 3.
+Because the model overfit early on the smaller deduplicated dataset, regularization was applied during training. Input scaling, dropout, and on-the-fly Gaussian noise added to joint coordinates brought the train/test performance gap down from 12 percentage points to about 5 (train 0.93, test 0.89 at the checkpointed epoch).
 
 ## Audio Exploration (Not Integrated)
 
@@ -88,7 +92,7 @@ fall-detection-multimodal/
 │   └── test_custom_csv.py    # quick manual sanity check against a saved checkpoint
 ├── assets/
 │   └── confusion_matrix.png  # GMDCSA24 confusion matrix, referenced from RESULTS.md
-├── best_model.pth / best_model_test_91acc.pth   # saved checkpoints
+├── best_model.pth           # current checkpoint (trained after the joint-order fix)
 ├── README.md
 └── RESULTS.md                # cross-dataset generalization writeup
 ```
@@ -102,7 +106,7 @@ pip install torch ultralytics pandas numpy scikit-learn matplotlib tqdm mlxtend
 python src/predict.py
 ```
 
-Run this from the repository root (checkpoints and the YOLO weights are loaded by relative path). Edit the `datafolder`, `fall_folder_name`, and `nofall_folder_name` arguments at the bottom of `src/predict.py` to point at your data. The script extracts keypoints with YOLOv8-Pose, runs the trained CNN (`best_model_test_91acc.pth`), and prints a confusion matrix and classification report.
+Run this from the repository root (checkpoints and the YOLO weights are loaded by relative path). Edit the `datafolder`, `fall_folder_name`, and `nofall_folder_name` arguments at the bottom of `src/predict.py` to point at your data. The script extracts keypoints with YOLOv8-Pose, runs the trained CNN (`best_model.pth`), and prints a confusion matrix and classification report.
 
 ## Datasets
 

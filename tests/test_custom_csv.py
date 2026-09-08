@@ -28,7 +28,7 @@ model = Fall2d(input_shape=3,
                output_shape=2,
                hidden_units=16)
 
-model.load_state_dict(torch.load(REPO_ROOT / "best_model_test_91acc.pth"))
+model.load_state_dict(torch.load(REPO_ROOT / "best_model.pth"))
 model.eval()
 
 with torch.inference_mode():
