@@ -9,14 +9,14 @@ from timeit import default_timer as timer
 def predict(datafolder: str | Path,
             fall_folder_name: str,
             nofall_folder_name: str,
-            model_path: str | Path = "best_model_test_91acc.pth",
+            model_path: str | Path = "best_model.pth",
             device: str | torch.device = "cpu"):
     """
     Args: 
         datafolder (str | Path): the path where video files are located
         fall_folder_name (str): the directory name of where fall videos are located
         nofall_folder_name (str): the directory name of where no fall/ADL videos are located
-        model_path (str | Path): state_dict model used, default to "best_model_test_91acc"
+        model_path (str | Path): state_dict model used, default to "best_model"
         device (str | torch.device): target device model runs on, default to cpu
 
     Returns:

@@ -47,10 +47,25 @@ def reshape(clean_frame):
         f"Some frames don't have exactly 17 joints: "
         f"{frame_size[frame_size != 17].to_dict()}"
     )
+    
+    # also sort by joint names
+    joint_names = [
+        "Nose", "Left Eye", "Right Eye", "Left Ear", "Right Ear",
+        "Left Shoulder", "Right Shoulder", "Left Elbow", "Right Elbow",
+        "Left Wrist", "Right Wrist", "Left Hip", "Right Hip",
+        "Left Knee", "Right Knee", "Left Ankle", "Right Ankle"
+    ]
+    # tell pandas that keypoint is a category that can be sorted later
+    clean_frame["Keypoint"] = pd.Categorical(clean_frame["Keypoint"], categories= joint_names, ordered= True)
 
-    df_sorted = clean_frame.sort_values("Frame")
+    # sort by frame first, then keypoints
+    df_sorted = clean_frame.sort_values(by= ["Frame", "Keypoint"], ascending= [True, True])
+    assert clean_frame["Keypoint"].notna().all(), \
+        f"unrecognised keypoint name(s): {set(clean_frame.loc[clean_frame['Keypoint'].isna(), 'Keypoint'])}"
+    
     nunique_frame = clean_frame["Frame"].nunique()
     target_values = df_sorted[["X", "Y", "Confidence"]].values
+
     return target_values.reshape(nunique_frame, 17, 3)
 
 
